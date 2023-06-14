@@ -1,1 +1,262 @@
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#include <iostream>
+#include <opencv2/opencv.hpp>
+using namespace cv;
 
+class Opening {
+public:
+    Opening(int kernelSize = 3, int iterations = 1)
+        : kernelSize(kernelSize), iterations(iterations) {}
+
+    void apply(cv::Mat& inputImage) const {
+        cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(kernelSize, kernelSize));
+        cv::morphologyEx(inputImage, inputImage, cv::MORPH_OPEN, kernel, cv::Point(-1, -1), iterations);
+    }
+
+private:
+    int kernelSize;
+    int iterations;
+};
+
+class Closing {
+public:
+    Closing(int kernelSize = 3, int iterations = 1)
+        : kernelSize(kernelSize), iterations(iterations) {}
+
+    void apply(cv::Mat& inputImage) const {
+        cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(kernelSize, kernelSize));
+        cv::morphologyEx(inputImage, inputImage, cv::MORPH_CLOSE, kernel, cv::Point(-1, -1), iterations);
+    }
+
+private:
+    int kernelSize;
+    int iterations;
+};
+class Iterative_Thresholding {
+public:
+    void IterativeThreshold(cv::Mat& inputImage, double initialThreshold, double maxError) {
+        cv::cvtColor(inputImage, inputImage, cv::COLOR_BGR2GRAY); // Convert to grayscale
+
+        double prevThreshold = initialThreshold;
+        double currThreshold = 0.0;
+        double diff = 0.0;
+
+        do {
+            currThreshold = GetThreshold(inputImage, prevThreshold); // Compute new threshold
+            diff = abs(currThreshold - prevThreshold); // Compute difference
+            prevThreshold = currThreshold;
+        } while (diff > maxError); // Repeat until difference is below max error
+
+        cv::threshold(inputImage, inputImage, currThreshold, 255, cv::THRESH_BINARY); // Apply binary threshold
+    }
+
+private:
+    double GetThreshold(cv::Mat& inputImage, double prevThreshold) {
+        cv::Scalar avg1, avg2, stdDev1, stdDev2;
+        cv::Mat img1, img2;
+
+        // Split image into two groups based on previous threshold
+        cv::threshold(inputImage, img1, prevThreshold, 255, cv::THRESH_BINARY);
+        cv::threshold(inputImage, img2, prevThreshold, 255, cv::THRESH_BINARY_INV);
+
+        // Calculate mean and standard deviation of pixel intensities in each group
+        cv::meanStdDev(inputImage, avg1, stdDev1, img1);
+        cv::meanStdDev(inputImage, avg2, stdDev2, img2);
+
+        // Compute new threshold as average of the means of the two groups
+        return 0.5 * (avg1[0] + avg2[0]);
+    }
+};
+class double_Thresholding {
+public:
+    double_Thresholding(cv::Mat inputImage, int lowerThreshold, int upperThreshold, int maxVal = 255, int thresholdType = cv::THRESH_BINARY);
+    cv::Mat applyThresholding();
+
+private:
+    cv::Mat inputImage_;
+    int lowerThreshold_;
+    int upperThreshold_;
+    int maxVal_;
+    int thresholdType_;
+};
+
+double_Thresholding::double_Thresholding(cv::Mat inputImage, int lowerThreshold, int upperThreshold, int maxVal, int thresholdType) :
+    inputImage_(inputImage), lowerThreshold_(lowerThreshold), upperThreshold_(upperThreshold), maxVal_(maxVal), thresholdType_(thresholdType) {}
+
+cv::Mat double_Thresholding::applyThresholding() {
+    cv::Mat result;
+    cv::threshold(inputImage_, result, lowerThreshold_, maxVal_, thresholdType_);
+    cv::threshold(inputImage_, result, upperThreshold_, maxVal_, cv::THRESH_BINARY_INV);
+    cv::bitwise_and(result, inputImage_, result);
+    return result;
+}
+
+class HistogramEqualizer {
+public:
+    HistogramEqualizer() {}
+
+    cv::Mat equalize(cv::Mat inputImage) {
+        cv::Mat outputImage;
+        cv::cvtColor(inputImage, outputImage, cv::COLOR_BGR2GRAY);
+        cv::equalizeHist(outputImage, outputImage);
+        return outputImage;
+    }
+};
+class AverageFilter {
+private:
+    int kernelSize;
+
+public:
+    AverageFilter(int kernelSize) {
+        this->kernelSize = kernelSize;
+    }
+
+    cv::Mat filter(cv::Mat inputImage) {
+        cv::Mat outputImage;
+        cv::blur(inputImage, outputImage, cv::Size(kernelSize, kernelSize));
+        return outputImage;
+    }
+};
+class GaussianFilter {
+public:
+    GaussianFilter(double sigma, int kernelSize) {
+        this->sigma = sigma;
+        this->kernelSize = kernelSize;
+        this->kernel = getGaussianKernel(kernelSize, sigma);
+    }
+
+    Mat filter(const Mat& image) {
+        Mat filteredImage;
+        GaussianBlur(image, filteredImage, Size(kernelSize, kernelSize), sigma);
+        return filteredImage;
+    }
+
+private:
+    double sigma;
+    int kernelSize;
+    Mat kernel;
+};
+class MedianFilter {
+public:
+    MedianFilter(int kernelSize) : kernelSize(kernelSize) {}
+
+    Mat filter(const Mat& inputImage) {
+        Mat outputImage;
+        medianBlur(inputImage, outputImage, kernelSize);
+        return outputImage;
+    }
+
+private:
+    int kernelSize;
+};
+class CannyEdgeDetector {
+private:
+    double lowThreshold;
+    double highThreshold;
+    int kernelSize;
+    cv::Mat srcImage;
+    cv::Mat dstImage;
+
+public:
+    CannyEdgeDetector(const cv::Mat& src, double low, double high, int size) {
+        srcImage = src.clone();
+        lowThreshold = low;
+        highThreshold = high;
+        kernelSize = size;
+    }
+
+    void apply() {
+        // Convert image to grayscale
+        cv::Mat grayImage;
+        cv::cvtColor(srcImage, grayImage, cv::COLOR_BGR2GRAY);
+
+        // Apply Gaussian filter
+        cv::Mat blurredImage;
+        cv::GaussianBlur(grayImage, blurredImage, cv::Size(kernelSize, kernelSize), 0);
+
+        // Apply Canny edge detector
+        cv::Canny(blurredImage, dstImage, lowThreshold, highThreshold);
+
+        // Show the result
+        cv::imshow("Canny Edge Detection", dstImage);
+        cv::waitKey(0);
+    }
+};
+int main() {
+    // Load input image
+    cv::Mat inputImage = cv::imread("input.jpg", cv::IMREAD_GRAYSCALE);
+    if (inputImage.empty()) {
+        std::cerr << "Failed to load input image\n";
+        return -1;
+    }
+
+    // Apply opening
+    Opening opening(5, 3);  // Use kernel size of 5 and 3 iterations
+    opening.apply(inputImage);
+
+    // Apply closing
+    Closing closing(3, 2);  // Use kernel size of 3 and 2 iterations
+    closing.apply(inputImage);
+
+    //Call the iterativeThreshold 
+    double initialThreshold = 128.0; // Set initial threshold
+    double maxError = 1.0; // Set maximum acceptable difference between thresholds
+
+    Iterative_Thresholding thresholding;
+    thresholding.IterativeThreshold(inputImage, initialThreshold, maxError); // Call IterativeThreshold function
+
+    cv::imshow("Binary Image", inputImage); // Show binary image
+
+
+    // Call the doubleThreshold
+    int lowerThreshold = 50;
+    int upperThreshold = 200;
+    double_Thresholding dt(inputImage, lowerThreshold, upperThreshold);
+    cv::Mat result = dt.applyThresholding();
+    
+    //Call the histogram equalizer
+    HistogramEqualizer histogramEqualizer;
+    cv::Mat outputImage = histogramEqualizer.equalize(inputImage);
+    cv::imshow("Input Image", inputImage);
+    cv::imshow("Output Image", outputImage);
+    
+   
+    //Call AverageFilter
+    AverageFilter filter(5);  // create an object of the AverageFilter class with kernel size 5
+    cv::Mat outputImage = filter.filter(inputImage);  // apply the filter to the input image
+
+    cv::imshow("Input Image", inputImage);
+    cv::imshow("Filtered Image", outputImage);
+    //Call Gaussian Filter
+    GaussianFilter filter(1.5, 5);
+    Mat filteredImage = filter.filter(inputImage);
+
+    imshow("Input Image", inputImage);
+    imshow("Filtered Image", filteredImage);
+
+    //Call Median Filter
+    int kernelSize = 5;
+    MedianFilter medianFilter(kernelSize);
+    Mat outputImage = medianFilter.filter(inputImage);
+
+    imshow("Input Image", inputImage);
+    imshow("Median Filtered Image", outputImage);
+
+    // Call the Canny Edge Detector
+    CannyEdgeDetector detector(inputImage, 50, 150, 3);
+    detector.apply();
+    // 
+
+    // 
+
+    //
+    
+    //
+
+    cv::waitKey(0);
+    return 0;
+
+}
